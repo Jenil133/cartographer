@@ -60,18 +60,24 @@ Verdict: **the Phase 1 spec matches the installed SDK.** No renames needed so fa
 
 | Metric | Value | When |
 |---|---|---|
-| **Revert latency p50 (web)** | **62.4 s** (min 30.4, max 64.1, n=5) | Step 6, 2026-09-07 |
+| **Revert latency p50 (web)** | **30.9 s** (min 27.9, max 64.1, n=7) | Steps 6-12, 2026-09-07 |
 | Sandbox boot (create -> ready -> snapshot) | 18.9 s | Step 6 |
+| Full loop cost (21 actions, 6 states, 2 reverts) | $0.019, 2.15 sandbox min | Step 12 |
 | Revert latency p50 (desktop) | _not measured yet_ | Phase 3 |
 | Browser session relaunches per run | _not measured yet_ | Phase 1 |
 | Cost per map | _not measured yet_ | Phase 1 |
 
-### Revert is slow, and it shapes the budget
-`revert()` + `reconnect()` + ready-poll + digest costs **30-64 s**, clustering around 62 s.
-The distribution is bimodal (two runs at ~30 s, three at ~63 s), suggesting a warm/cold path
-rather than noise. This is the single biggest cost in an exploration run: 8 mutating actions
-means ~8 minutes of pure reverting against a 25-minute default budget. Worth reporting
-honestly and worth asking Solari about — it is the headline number for the write-up.
+### Revert is slow and clearly bimodal
+`revert()` + `reconnect()` + ready-poll + digest, n=7 across two sessions:
+
+    27.9  30.4  30.7  30.9 | 62.4  63.5  64.1     (seconds)
+
+Two tight clusters, ~29 s and ~63 s, with nothing in between — a warm/cold path, not noise.
+p50 is 30.9 s but quoting p50 alone is misleading; the write-up should give both modes.
+
+Still the dominant cost in a run: 8 mutating actions is 4-8 minutes of pure reverting against
+a 25-minute default budget. Worth asking Solari what distinguishes the two paths — it is the
+headline number for the write-up.
 
 The app process **did survive** every revert (RAM was restored, the ready-poll passed without
 needing `startServer()`), which is the behaviour the snapshot is supposed to give.

@@ -10,10 +10,19 @@ import { proposeAffordances } from "../vision/gemini.js";
 import { Frontier } from "./frontier.js";
 import type { Edge, MapDoc, RunMeta, StateNode, TargetManifest } from "../types.js";
 
+/** Same shape as proposeAffordances, so it can be swapped without touching callers. */
+export type VisionFn = typeof proposeAffordances;
+
 export interface ExploreOptions {
   resume: boolean;
   maxActions?: number;
   keepSnapshot?: boolean;
+  /**
+   * Override the affordance source. Defaults to Gemini. Injecting a stub lets the
+   * loop (BFS, mutation detection, revert, persistence) be exercised against real
+   * infrastructure without spending vision quota.
+   */
+  vision?: VisionFn;
 }
 
 export interface ExploreResult {
@@ -28,6 +37,7 @@ export async function explore(
   m: TargetManifest,
   opts: ExploreOptions,
 ): Promise<ExploreResult> {
+  const vision: VisionFn = opts.vision ?? proposeAffordances;
   const store = new MapStore(path.join(config.CARTO_MAPS_DIR, m.name));
   const doc = (opts.resume && store.load()) || store.init(m);
 
@@ -92,7 +102,7 @@ export async function explore(
 
     if (budget.spent.visionCalls < run.budget.maxVisionCalls) {
       budget.note("visionCalls");
-      node.affordances = await proposeAffordances(obs.png, {
+      node.affordances = await vision(obs.png, {
         stateId: id,
         width: m.viewport.width,
         height: m.viewport.height,

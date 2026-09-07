@@ -77,11 +77,13 @@ bills until its idle timeout, so teardown always runs.
 
 | | |
 |---|---|
-| Revert latency (web) | **p50 62.4 s**, min 30.4, max 64.1 (n=5) |
+| Revert latency (web) | **p50 30.9 s**, min 27.9, max 64.1 (n=7) |
 | Sandbox boot to root snapshot | 18.9 s |
+| A 21-action run (6 states, 2 reverted mutations) | $0.019 |
 
-Revert is the dominant cost in a run: eight mutating actions is roughly eight minutes of pure
-reverting. The distribution is bimodal, which suggests a warm/cold path rather than noise.
+Revert times fall into two tight clusters, ~29 s and ~63 s, with nothing in between — a warm
+and a cold path rather than noise, so p50 alone understates the worst case. It is still the
+dominant cost in a run: eight mutating actions is four to eight minutes of pure reverting.
 `NOTES.md` carries the running log of measurements and platform gotchas.
 
 ## Status

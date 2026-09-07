@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .env
-maps/*/shots/
+# Maps are run artifacts. Phase 2 commits curated maps of real apps deliberately;
+# until then nothing here should be mistaken for a published result.
+maps/
 *.log
 .DS_Store
 examples/*/shop.db
