@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartographer map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --line: #d8dce2; --ink: #16181d;
+    --muted: #5b6472; --danger: #b3261e; --accent: #1552b5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+         color: var(--ink); background: var(--bg); }
+  header { background: #1f2933; color: #fff; padding: 12px 20px; display: flex;
+           align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .stats { font-size: 13px; color: #c7ced8; display: flex; gap: 14px; flex-wrap: wrap; }
+  header .stats b { color: #fff; font-weight: 600; }
+  main { display: grid; grid-template-columns: 1fr 360px; height: calc(100vh - 49px); }
+  #cy { background: var(--bg); }
+  aside { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 16px; }
+  aside h2 { font-size: 14px; margin: 0 0 4px; }
+  aside .path { color: var(--muted); font-size: 12px; word-break: break-all; margin-bottom: 12px; }
+  aside img { width: 100%; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; }
+  aside .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+                 color: var(--muted); margin: 12px 0 4px; }
+  .aff { border-top: 1px solid var(--line); padding: 7px 0; font-size: 13px; }
+  .aff .risk { font-size: 11px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+  .risk-write { background: #fde8e6; color: var(--danger); }
+  .risk-read { background: #e8eef9; color: var(--accent); }
+  .risk-unknown { background: #eceef1; color: var(--muted); }
+  .empty { color: var(--muted); }
+  .mut { color: var(--danger); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cartographer</h1>
+  <div class="stats" id="stats"></div>
+</header>
+<main>
+  <div id="cy"></div>
+  <aside id="panel"><p class="empty">Click a node or edge.</p></aside>
+</main>
+<script>
+const panel = document.getElementById("panel");
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+fetch("map.json").then((r) => r.json()).then((doc) => {
+  const states = Object.values(doc.states);
+  const mutated = doc.edges.filter((e) => e.mutated);
+  const last = doc.runs[doc.runs.length - 1];
+  const sp = last?.spent ?? {};
+
+  document.getElementById("stats").innerHTML = [
+    `<span>target <b>${esc(doc.target?.name)}</b></span>`,
+    `<span>states <b>${states.length}</b></span>`,
+    `<span>edges <b>${doc.edges.length}</b></span>`,
+    `<span>mutated <b>${mutated.length}</b> (reverted ${mutated.filter((e) => e.reverted).length})</span>`,
+    `<span>vision <b>${sp.visionCalls ?? 0}</b></span>`,
+    `<span>est. <b>$${(sp.estUsd ?? 0).toFixed(3)}</b></span>`,
+  ].join("");
+
+  const cy = cytoscape({
+    container: document.getElementById("cy"),
+    elements: [
+      ...states.map((s) => ({ data: { id: s.id, label: s.title || s.urlPath, root: s.id === doc.rootStateId } })),
+      ...doc.edges.map((e) => ({
+        data: { id: e.id, source: e.from, target: e.to, label: e.action.label, mutated: e.mutated },
+      })),
+    ],
+    style: [
+      { selector: "node", style: {
+          "background-color": "#fff", "border-color": "#8d97a5", "border-width": 1,
+          label: "data(label)", "font-size": 11, color: "#16181d",
+          "text-valign": "center", "text-wrap": "ellipsis", "text-max-width": 120,
+          width: 140, height: 34, shape: "round-rectangle" } },
+      { selector: "node[?root]", style: { "border-color": "#1552b5", "border-width": 3 } },
+      { selector: "edge", style: {
+          width: 1.5, "line-color": "#aab2be", "target-arrow-color": "#aab2be",
+          "target-arrow-shape": "triangle", "curve-style": "bezier",
+          label: "data(label)", "font-size": 9, color: "#5b6472",
+          "text-rotation": "autorotate", "text-background-color": "#f6f7f9",
+          "text-background-opacity": 1, "text-background-padding": 2 } },
+      // Mutating edges are the point of the project: make them impossible to miss.
+      { selector: "edge[?mutated]", style: {
+          "line-color": "#b3261e", "target-arrow-color": "#b3261e",
+          "line-style": "dashed", width: 2.5, color: "#b3261e" } },
+      { selector: ":selected", style: { "border-color": "#1552b5", "border-width": 3 } },
+    ],
+    layout: { name: "breadthfirst", roots: doc.rootStateId ? [doc.rootStateId] : undefined,
+              directed: true, spacingFactor: 1.15, padding: 30 },
+  });
+
+  cy.on("tap", "node", (ev) => {
+    const s = doc.states[ev.target.id()];
+    const affs = s.affordances.map((a) => `
+      <div class="aff">${esc(a.label)}
+        <span class="risk risk-${esc(a.risk)}">${esc(a.risk)}</span>
+        <div style="color:#5b6472;font-size:12px">${esc(a.expected)}</div>
+        <div style="color:#8d97a5;font-size:11px">click ${Math.round(a.bbox.x + a.bbox.w / 2)}, ${Math.round(a.bbox.y + a.bbox.h / 2)} &middot; ${esc(a.status)}</div>
+      </div>`).join("") || '<p class="empty">No affordances recorded.</p>';
+    panel.innerHTML = `<h2>${esc(s.title || s.urlPath)}</h2>
+      <div class="path">${esc(s.urlPath)}</div>
+      <img src="${esc(s.screenshot)}" alt="">
+      <div class="label">Affordances (${s.affordances.length})</div>${affs}`;
+  });
+
+  cy.on("tap", "edge", (ev) => {
+    const e = doc.edges.find((x) => x.id === ev.target.id());
+    panel.innerHTML = `<h2>${esc(e.action.label)}</h2>
+      <div class="path">${esc(e.id)} &middot; click ${e.action.x}, ${e.action.y} &middot; ${e.durationMs} ms</div>
+      ${e.mutated ? `<p class="mut">Mutated data${e.reverted ? " &mdash; reverted to root snapshot" : " &mdash; NOT REVERTED"}</p>` : "<p class=\"empty\">No data change.</p>"}
+      <div class="label">Before</div><img src="${esc(e.evidence.before)}" alt="">
+      <div class="label">After</div><img src="${esc(e.evidence.after)}" alt="">
+      <div class="label">Digest</div>
+      <div class="path">before ${esc(e.digestBefore.slice(0, 16))}<br>after&nbsp; ${esc(e.digestAfter.slice(0, 16))}</div>`;
+  });
+}).catch((err) => {
+  panel.innerHTML = `<p class="empty">Could not load map.json: ${esc(err.message)}</p>`;
+});
+</script>
+</body>
+</html>
