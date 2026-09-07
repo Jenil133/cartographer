@@ -67,4 +67,20 @@ Verdict: **the Phase 1 spec matches the installed SDK.** No renames needed so fa
 
 ## Bugs / gotchas hit
 
-_(none yet)_
+### macOS owns port 5000 (local only, not a Solari issue)
+`examples/target-shop` listens on 5000, which is what `carto.target.json` declares and what
+the Linux sandbox uses. On macOS, **ControlCenter (AirPlay Receiver) already binds :5000** and
+answers every request `403 Forbidden` with `Server: AirTunes/950.7.1` — so a local smoke test
+looks like a broken app rather than a port clash. Flask's own log says it plainly:
+
+    Address already in use
+    Port 5000 is in use by another program.
+
+`app.py` therefore reads `PORT` from the environment, defaulting to 5000. Sandbox behaviour is
+unchanged; local runs use `PORT=5055 python3 app.py`. Do **not** change the manifest port.
+
+### Verified: digest only moves on writes (Step 2)
+Baseline digest, then 5 read-only page loads (`/orders`, `/orders/3`, `/customers`,
+`/customers/4`, `/settings`) -> digest byte-identical. Each of refund / settings-save /
+delete changed it. No `shop.db-wal` or `-journal` sidecars appeared, confirming
+`PRAGMA journal_mode=DELETE` keeps mutations inside the digested file.

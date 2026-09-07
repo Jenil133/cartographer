@@ -4,3 +4,4 @@ dist/
 maps/*/shots/
 *.log
 .DS_Store
+examples/*/shop.db

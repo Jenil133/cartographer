@@ -1,0 +1,25 @@
+{
+  "name": "target-shop",
+  "source": { "type": "local", "dir": "examples/target-shop" },
+  "runtime": {
+    "install": ["cd /work/app && python3 -m pip install --user -r requirements.txt"],
+    "start": "cd /work/app && python3 app.py",
+    "port": 5000,
+    "readyPath": "/health",
+    "cpu": 2,
+    "memMb": 4096,
+    "diskGb": 4
+  },
+  "dataPaths": ["/work/app/shop.db"],
+  "login": {
+    "url": "/login",
+    "steps": [
+      { "fill": ["#username", "admin"] },
+      { "fill": ["#password", "admin"] },
+      { "click": "button[type=submit]" }
+    ]
+  },
+  "blocklist": ["log ?out", "sign ?out"],
+  "viewport": { "width": 1280, "height": 800 },
+  "budget": { "maxActions": 40, "maxStates": 30, "maxVisionCalls": 40, "maxMinutes": 25 }
+}
