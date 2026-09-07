@@ -130,6 +130,26 @@ appears in the list but answers
 Confirmed working for vision+schema: 3.5-flash (6.3 s), 3.6-flash (19.3 s), 3.7-flash (7.4 s).
 Staying on 3.7 per spec.
 
+### BLOCKER: Gemini free tier is 20 requests/day/model (Step 7)
+`429 RESOURCE_EXHAUSTED`, quota `GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
+**limit 20**, metric `generate_content_free_tier_requests`.
+
+Exploration spends one vision call per newly discovered state, so a 30-state map needs ~30
+calls. **The free tier cannot complete a single Phase 1 e2e run.** Billing must be enabled on
+the Gemini API project before Steps 10-12 can run.
+
+The limit is per-model, so spreading calls across 3.5/3.6/3.7 would give 60/day — do not do
+this: mixing models mid-run makes the Phase 2 benchmark numbers meaningless.
+
+### A blocked navigation parks the page on chrome-error:// (Step 7)
+When `ctx.route` aborts a navigation, the page lands on `chrome-error://chromewebdata/` and the
+*next* `goto` fails with "interrupted by another navigation to chrome-error://chromewebdata/".
+The error navigation is still settling when the new one starts.
+
+Matters for exploration: any click that tries to leave the preview host poisons that page. The
+explorer already builds a fresh context per episode, which contains it, but any code doing two
+navigations in one page after a block needs to expect this.
+
 ### Preview gateway is behind an AWS ALB that injects its own cookies (Step 6)
 Logging in over the preview URL with raw `fetch`, `res.headers.get("set-cookie")` returns
 **`AWSALB=...`**, not Flask's `session`. The gateway's load balancer sets `AWSALB` and
