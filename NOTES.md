@@ -60,10 +60,32 @@ Verdict: **the Phase 1 spec matches the installed SDK.** No renames needed so fa
 
 | Metric | Value | When |
 |---|---|---|
-| Revert latency p50 (web) | _not measured yet_ | Phase 1 Step 6 |
+| **Revert latency p50 (web)** | **62.4 s** (min 30.4, max 64.1, n=5) | Step 6, 2026-09-07 |
+| Sandbox boot (create -> ready -> snapshot) | 18.9 s | Step 6 |
 | Revert latency p50 (desktop) | _not measured yet_ | Phase 3 |
 | Browser session relaunches per run | _not measured yet_ | Phase 1 |
 | Cost per map | _not measured yet_ | Phase 1 |
+
+### Revert is slow, and it shapes the budget
+`revert()` + `reconnect()` + ready-poll + digest costs **30-64 s**, clustering around 62 s.
+The distribution is bimodal (two runs at ~30 s, three at ~63 s), suggesting a warm/cold path
+rather than noise. This is the single biggest cost in an exploration run: 8 mutating actions
+means ~8 minutes of pure reverting against a 25-minute default budget. Worth reporting
+honestly and worth asking Solari about — it is the headline number for the write-up.
+
+The app process **did survive** every revert (RAM was restored, the ready-poll passed without
+needing `startServer()`), which is the behaviour the snapshot is supposed to give.
+
+### Deterministic seeding confirmed across boots
+Two independent sandbox boots produced the byte-identical root digest
+`5e555e246470aca2465c67a7339a366ec9d2af847f77f637b24ce7b20d1c28f2`. The fixed seed data means
+digests are comparable across runs and machines, which Phase 3's fork-based parallelism needs.
+
+## Cookbook fork
+
+https://github.com/Jenil133/solari-cookbook — forked, untouched until Phase 3 Step 9
+(add `examples/cartographer-ts` + `projects/cartographer/README.md`, then a small PR
+upstream containing only that one runnable example plus a README table row).
 
 ## Bugs / gotchas hit
 
@@ -107,6 +129,19 @@ appears in the list but answers
 `404 "no longer available to new users. Please update to models/gemini-3.6-flash"`.
 Confirmed working for vision+schema: 3.5-flash (6.3 s), 3.6-flash (19.3 s), 3.7-flash (7.4 s).
 Staying on 3.7 per spec.
+
+### Preview gateway is behind an AWS ALB that injects its own cookies (Step 6)
+Logging in over the preview URL with raw `fetch`, `res.headers.get("set-cookie")` returns
+**`AWSALB=...`**, not Flask's `session`. The gateway's load balancer sets `AWSALB` and
+`AWSALBCORS` alongside the app's own cookie, and `.get()` yields only the first header.
+
+The failure is silent and convincing: every later request is unauthenticated, `POST
+/orders/1/refund` answers `302` (to `/login`, not to the order page), the digest never moves,
+and it all reads as "revert worked, nothing mutated". Cost an entire debug VM to spot.
+
+Fix: `res.headers.getSetCookie()` (array of every Set-Cookie) and replay them all — keeping
+`AWSALB` is desirable anyway for load-balancer stickiness. Playwright's `storageState` handles
+this correctly on its own, so this bites raw-fetch callers only.
 
 ### Verified: digest only moves on writes (Step 2)
 Baseline digest, then 5 read-only page loads (`/orders`, `/orders/3`, `/customers`,
