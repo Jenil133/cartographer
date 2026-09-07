@@ -79,6 +79,35 @@ looks like a broken app rather than a port clash. Flask's own log says it plainl
 `app.py` therefore reads `PORT` from the environment, defaulting to 5000. Sandbox behaviour is
 unchanged; local runs use `PORT=5055 python3 app.py`. Do **not** change the manifest port.
 
+### Gemini returns 0-1000 normalized boxes, NOT pixels (Step 5) — critical
+The spec's prompt asks for "pixel bounding boxes in screenshot coordinates". Gemini ignores
+that and uses its native normalized scale. Treating the numbers as pixels put every click
+roughly 100 px away from its target, on empty background. Nothing errors: clicks land on
+nothing, states never transition, and the map fills up with junk. Only drawing the returned
+boxes back onto the screenshot exposed it.
+
+Worse, asking for `{x, y, w, h}` is itself the trap. With that schema the model translates out
+of its native format and mangles the vertical axis specifically: x and w came back pixel-exact
+after scaling, while y stayed ~24% too large across every box — consistent, so not noise.
+
+Fix: ask for Gemini's native `box_2d: [ymin, xmin, ymax, xmax]` normalized 0-1000, then convert.
+After the switch all 8 affordances landed dead centre on their controls.
+
+Takeaway for any vision-first agent on Gemini: use `box_2d`, and always draw the boxes back
+onto the image before trusting them. `scripts/verify-vision.ts` does this and is kept for
+re-checking after prompt changes.
+
+### gemini-3.7-flash 503s under load; the model list is not a capability check
+`gemini-3.7-flash` returned `503 UNAVAILABLE "experiencing high demand"` for image+schema calls
+for roughly two minutes, while a plain text call to the same model succeeded seconds earlier.
+It recovered on its own. `proposeAffordances` now backs off (3 tries, 2 s base) per pass.
+
+Also: `models.list` returning a model does NOT mean the key can use it. `gemini-2.5-flash`
+appears in the list but answers
+`404 "no longer available to new users. Please update to models/gemini-3.6-flash"`.
+Confirmed working for vision+schema: 3.5-flash (6.3 s), 3.6-flash (19.3 s), 3.7-flash (7.4 s).
+Staying on 3.7 per spec.
+
 ### Verified: digest only moves on writes (Step 2)
 Baseline digest, then 5 read-only page loads (`/orders`, `/orders/3`, `/customers`,
 `/customers/4`, `/settings`) -> digest byte-identical. Each of refund / settings-save /

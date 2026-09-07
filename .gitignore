@@ -9,3 +9,5 @@ examples/*/shop.db
 # Private build specs - strategy, not shipped docs.
 # NOT all of docs/: phases 2-3 add public docs there (getting-started, mcp-tools, benchmark).
 docs/phase-*.md
+vision-overlay.png
+.carto-shot.png
